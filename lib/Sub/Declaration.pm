@@ -5,26 +5,29 @@
 ## This program is free software. It may be copied and/or redistributed under
 ## the same terms as Perl itself.
 ##==============================================================================
-## $Id: Declaration.pm,v 0.9 2004/07/27 02:13:05 kevin Exp $
+## $Id: Declaration.pm,v 0.11 2004/07/30 01:41:33 kevin Exp $
 ##==============================================================================
 require 5.006;
 
-package ## don't index this yet
-	Sub::Declaration;
+package Sub::Declaration;
 use strict;
 use warnings;
-our ($VERSION) = q$Revision: 0.9 $ =~ /^Revision:\s+(\S+)/ or $VERSION = "0.0";
+our ($VERSION) = q$Revision: 0.11 $ =~ /^Revision:\s+(\S+)/ or $VERSION = "0.0";
 
-use Lexical::Util qw(frame_to_cvref lexalias ref_to_lexical);
+use Lexical::Util qw(frame_to_cvref lexical_alias ref_to_lexical);
 use Filter::Simple;
 use Symbol qw(qualify_to_ref);
+use attributes ();				## this seems to be needed for Perl2Exe
+use Carp;
+
+my ($Package, $File, $Line);
 
 ##==============================================================================
 ## Common regexen used below.
 ##==============================================================================
 my $id = qr/[_[:alpha:]]\w*/;
 my $item = qr/(?:(?:COPY\s+)?\\?[\$\@\%]|\\?[\&\*])$id/;
-my $arglist = qr/$item\s*(?:[,;]\s*$item\s*)*\s*(?:[,;]?\s*)?/;
+my $arglist = qr/\s*$item(?:\s*[,;]\s*$item)*\s*(?:[,;]?\s*)?/;
 
 ##==============================================================================
 ## Options used for each package
@@ -45,8 +48,9 @@ my @ArgumentLists;
 my %argspecs = (
 	'$'	     =>	[
 		'$', '$', sub {
-			my ($cvref, $varname) = splice @_, -2;
-			lexalias($cvref, $varname, \$_[0]);
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
+			my $msg = lexical_alias($cvref, $varname, \$_[0]);
+			confess "$filename($line): $msg" if $msg;
 			shift @_;
 			0;
 		},
@@ -54,7 +58,7 @@ my %argspecs = (
 	],
 	'COPY $' =>	[
 		'$', '$', sub {
-			my ($cvref, $varname) = splice @_, -2;
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
 			my $varref = ref_to_lexical($cvref, $varname);
 			$$varref = shift @_;
 			0;
@@ -62,15 +66,16 @@ my %argspecs = (
 	],
 	'\$'     =>	[
 		'$', '\$', sub {
-			my ($cvref, $varname) = splice @_, -2;
-			lexalias($cvref, $varname, \$$_[0]);
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
+			my $msg = lexical_alias($cvref, $varname, \$$_[0]);
+			confess "$filename($line): $msg" if $msg;
 			shift @_;
 			0;
 		},
 	],
 	'@'	     =>	[
 		'@', '@', sub {
-			my ($cvref, $varname) = splice @_, -2;
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
 			my $varref = ref_to_lexical($cvref, $varname);
 			@$varref = @_;
 			@_ = ();
@@ -79,7 +84,7 @@ my %argspecs = (
 	],
 	'COPY @' =>	[
 		'@', '\@', sub {
-			my ($cvref, $varname) = splice @_, -2;
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
 			my $varref = ref_to_lexical($cvref, $varname);
 			@$varref = @{shift @_};
 			0;
@@ -87,14 +92,15 @@ my %argspecs = (
 	],
 	'\@'     =>	[
 		'@', '\@', sub {
-			my ($cvref, $varname) = splice @_, -2;
-			lexalias($cvref, $varname, shift @_);
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
+			my $msg = lexical_alias($cvref, $varname, shift @_);
+			confess "$filename($line): $msg" if $msg;
 			0;
 		},
 	],
 	'%'	     =>	[
 		'%', '%', sub {
-			my ($cvref, $varname) = splice @_, -2;
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
 			my $varref = ref_to_lexical($cvref, $varname);
 			%$varref = @_;
 			@_ = ();
@@ -103,7 +109,7 @@ my %argspecs = (
 	],
 	'COPY %' =>	[
 		'%', '\%', sub {
-			my ($cvref, $varname) = splice @_, -2;
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
 			my $varref = ref_to_lexical($cvref, $varname);
 			%$varref = %{shift @_};
 			0;
@@ -111,14 +117,15 @@ my %argspecs = (
 	],
 	'\%'     =>	[
 		'%', '\%', sub {
-			my ($cvref, $varname) = splice @_, -2;
-			lexalias($cvref, $varname, shift @_);
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
+			my $msg = lexical_alias($cvref, $varname, shift @_);
+			confess "$filename($line): $msg\n" if $msg;
 			0;
 		},
 	],
 	'&'	     =>	[
 		'$', '&', sub {
-			my ($cvref, $varname) = splice @_, -2;
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
 			my $varref = ref_to_lexical($cvref, $varname);
 			$$varref = shift @_;
 			0;
@@ -126,7 +133,7 @@ my %argspecs = (
 	],
 	'\&'     =>	[
 		'$', '\&', sub {
-			my ($cvref, $varname) = splice @_, -2;
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
 			my $varref = ref_to_lexical($cvref, $varname);
 			$$varref = shift @_;
 			0;
@@ -134,7 +141,7 @@ my %argspecs = (
 	],
 	'*'	     =>	[
 		'$', '*', sub {
-			my ($cvref, $varname) = splice @_, -2;
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
 			my $varref = ref_to_lexical($cvref, $varname);
 			$$varref = qualify_to_ref(shift @_, (caller(2))[0]);
 			0;
@@ -142,7 +149,7 @@ my %argspecs = (
 	],
 	'\*'     =>	[
 		'$', '\*', sub {
-			my ($cvref, $varname) = splice @_, -2;
+			my ($cvref, $varname, $filename, $line) = splice @_, -4;
 			my $varref = ref_to_lexical($cvref, $varname);
 			$$varref = qualify_to_ref(shift @_, (caller(2))[0]);
 			0;
@@ -169,17 +176,17 @@ sub arg2var ($) {
 }
 
 ##==============================================================================
-## ensub($package, $name, $arglist);
+## ensub($name, $arglist);
 ## Convert a 'method' declaration to the equivalent 'sub' declaration, adding
 ## the object reference to the front of the argument list.
 ##==============================================================================
 sub ensub {
-	my ($package, $name, $arglist) = @_;
+	my ($name, $arglist) = @_;
 	my $output = 'method ';
 	$output .= $name if defined $name;
 
-	my $selfvar = $Options{$package}{'self'} || 'self';
-	$selfvar = '$' . $selfvar;
+	my $selfvar = $Options{$Package}{'self'} || 'self';
+	$selfvar = 'COPY $' . $selfvar;
 
 	$arglist = defined $arglist ? "$selfvar, " . $arglist : $selfvar;
 
@@ -187,19 +194,19 @@ sub ensub {
 }
 
 ##==============================================================================
-## protoize($package, $type, $name, $arglist, $attrs, $punct);
+## protoize($type, $name, $arglist, $attrs, $punct);
 ## after matching 'sub <name>(<arglist>) <punct>', output the appropriate
 ## conversion.
 ##==============================================================================
 sub protoize {
-	my ($package, $type, $name, $arglist, $attrs, $punct) = @_;
+	my ($type, $name, $arglist, $attrs, $punct) = @_;
 	my $output = 'sub ';
 	$output .= $name if defined $name;
 
 	my @args = split m/\s*[,;]\s*/, $arglist;
 	if ($type eq 'method') {
-		$output .= ' : method' if $Options{$package}{'method'};
-	} elsif ($Options{$package}{'proto'}) {
+		$output .= ' : method' if $Options{$Package}{'method'};
+	} elsif ($Options{$Package}{'proto'}) {
 		my $proto = join '', map { (arg2var($_))[1] } @args;
 		$output .= "($proto)";
 	}
@@ -218,12 +225,12 @@ sub protoize {
 }
 
 ##==============================================================================
-## expand_arglist($package, $arglist);
+## expand_arglist($arglist);
 ## Convert argument list into 'my' declaration followed by commands to set them
 ## up (alias, copy, or slurp).
 ##==============================================================================
 sub expand_arglist {
-	my ($package, $arglist) = @_;
+	my ($arglist) = @_;
 	my $output;
 	my @args = split m/\s*[,;]\s*/, $arglist;
 	my @vars = map {
@@ -250,17 +257,15 @@ sub expand_arglist {
 ## FILTER
 ##==============================================================================
 FILTER {
-	my $package = caller(1);
-
 	##--------------------------------------------------------------------------
 	## Convert any 'method' declarations into the equivalent 'sub' declarations.
 	##--------------------------------------------------------------------------
 	s{
-        (?<![\$\@\%\*\&\\\:])\bmethod\b ## But not if it's a variable
+        (?<!\S)\bmethod\b               ## Must not immediately follow non-WS
         (?:\s+($id(?:::$id)*))?\s*      ## Name into $1 if present
         (?:\(($arglist)\))?             ## Capture arg list into $2
 	}{
-		ensub($package, $1, $2)
+		ensub($1, $2)
 	}sexg;
 
 	##--------------------------------------------------------------------------
@@ -268,14 +273,13 @@ FILTER {
 	## 'argument list' directives.
 	##--------------------------------------------------------------------------
 	s{
-        (?<![\$\@\%\*\&\\\:])           ## But not if it's a variable
-        \b(sub|method)\b                ## Capture type into $1
+        (?<!\S)\b(sub|method)\b         ## "sub" or "method" into $1
         (?:\s+($id(?:::$id)*))?\s*      ## Name into $2 if present
         \(($arglist)\)\s*               ## Capture arg list into $3
         (?:(:\s*[^\x7B;]+)\s*)?			## Attribute list into $4
         ([\x7B;])                       ## Save terminating punctuation into $5
 	}{
-		protoize($package, $1, $2, $3, $4, $5)
+		protoize($1, $2, $3, $4, $5)
 	}sexg;
 
 	##--------------------------------------------------------------------------
@@ -284,11 +288,10 @@ FILTER {
 	## explicitly.
 	##--------------------------------------------------------------------------
 	s{
-        (?<![\$\@\%\*\&\\])             ## Not if it's a variable
-        \bargument\s+list\s*            ## Initial prefix
+        (?<!\S)\bargument\s+list\b\s*   ## Must not immediately follow non-WS
         \(($arglist)\)\s*               ## Argument list into $1
 	}{
-		expand_arglist($package, $1)
+		expand_arglist($1)
 	}sexg;
 
 	##--------------------------------------------------------------------------
@@ -296,7 +299,7 @@ FILTER {
 	##--------------------------------------------------------------------------
 	s{\\(sub|method|argument\s+list)\b}{$1}sg;
 
-	print if $Options{$package}{'debug'};
+	print if $Options{$Package}{'debug'};
 };
 
 ##==============================================================================
@@ -305,10 +308,11 @@ FILTER {
 sub arglist {
 	my $arg_index = pop @_;
 	my $cvref = frame_to_cvref(1);
+	my ($package, $filename, $line) = caller;
 
 	foreach (@{$ArgumentLists[$arg_index]}) {
 		my ($varname, $proc) = @$_;
-		push @_, $cvref, $varname;
+		push @_, $cvref, $varname, $filename, $line;
 		last if &$proc;
 	}
 }
@@ -318,25 +322,25 @@ sub arglist {
 ##==============================================================================
 sub import {
 	my $class = shift;
-	my ($package, $filename, $line) = caller;
+	($Package, $File, $Line) = caller;
 
-	$Options{$package} = {
+	$Options{$Package} = {
 		'self' => 'self',
 		'proto' => 1,
 		'debug' => 0,
 		'method' => 1,
-	} unless exists $Options{$package};
+	} unless exists $Options{$Package};
 
 	foreach (@_) {
 		/^-(no)?(proto|method|debug)$/ and do {
-			$Options{$package}{$2} = !defined($1);
+			$Options{$Package}{$2} = !defined($1);
 			next;
 		};
 		/^-self:($id)$/ and do {
-			$Options{$package}{'self'} = $1;
+			$Options{$Package}{'self'} = $1;
 			next;
 		};
-		die "$filename($line): invalid import option '$_'\n";
+		die "$File($Line): invalid import option '$_'\n";
 	}
 }
 
@@ -344,6 +348,14 @@ sub import {
 
 ##==============================================================================
 ## $Log: Declaration.pm,v $
+## Revision 0.11  2004/07/30 01:41:33  kevin
+## Use 'lexical_alias' routine for better error messages.
+## Improve the regular expressions used for filtering.
+##
+## Revision 0.10  2004/07/29 01:31:49  kevin
+## Fix option handling, the regexen that detect the special syntax, and go ahead
+## and let CPAN index this.
+##
 ## Revision 0.9  2004/07/27 02:13:05  kevin
 ## POD and README changes only.
 ##
@@ -781,11 +793,16 @@ have to call this routine explicitly, so it is not documented further.
 
 =head1 MODULES USED
 
-L<Filter::Simple|Filter::Simple>
+L<Filter::Simple|Filter::Simple>, 
+L<Lexical::Util|Lexical::Util> (version 0.8 or later)
 
-L<Lexical::Util|Lexical::Util>
+=head1 SEE ALSO
 
-L<Symbol|Symbol>
+For other approaches, see:
+
+L<Perl6::Parameters|Perl6::Parameters>,
+L<Sub::Parameters|Sub::Parameters>,
+L<Sub::NamedParams|Sub::NamedParams>
 
 =head1 COPYRIGHT AND LICENSE
 
@@ -796,4 +813,4 @@ same terms as Perl itself.
 
 =head1 AUTHOR
 
-Kevin Michael Vail <F<kevin>@F<vaildc>.F<net>>
+Kevin Michael Vail <F<kvail>@F<cpan>.F<org>>
