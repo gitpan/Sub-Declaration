@@ -1,0 +1,6 @@
+Revision history for Perl extension Sub::Declaration.
+
+0.01  Sat Jun 26 21:07:59 2004
+	- original version; created by h2xs 1.23 with options
+		-XA -b 5.6.0 Sub::Declaration
+

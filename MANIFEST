@@ -1,0 +1,7 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/Sub-Declaration.t
+lib/Sub/Declaration.pm
+META.yml                                 Module meta-data (added by MakeMaker)
