@@ -5,7 +5,7 @@
 ## This program is free software. It may be copied and/or redistributed under
 ## the same terms as Perl itself.
 ##==============================================================================
-## $Id: Declaration.pm,v 0.8 2004/07/17 04:34:18 kevin Exp $
+## $Id: Declaration.pm,v 0.9 2004/07/27 02:13:05 kevin Exp $
 ##==============================================================================
 require 5.006;
 
@@ -13,7 +13,7 @@ package ## don't index this yet
 	Sub::Declaration;
 use strict;
 use warnings;
-our ($VERSION) = q$Revision: 0.8 $ =~ /^Revision:\s+(\S+)/ or $VERSION = "0.0";
+our ($VERSION) = q$Revision: 0.9 $ =~ /^Revision:\s+(\S+)/ or $VERSION = "0.0";
 
 use Lexical::Util qw(frame_to_cvref lexalias ref_to_lexical);
 use Filter::Simple;
@@ -344,6 +344,9 @@ sub import {
 
 ##==============================================================================
 ## $Log: Declaration.pm,v $
+## Revision 0.9  2004/07/27 02:13:05  kevin
+## POD and README changes only.
+##
 ## Revision 0.8  2004/07/17 04:34:18  kevin
 ## Try to keep everything on one line.
 ##
@@ -371,6 +374,8 @@ sub import {
 ##==============================================================================
 
 __END__
+
+=pod
 
 =head1 NAME
 
@@ -772,12 +777,14 @@ B<arglist> subroutine within this module. This I<must> be called using the
 C<&>-form of subroutine call with no arguments and no trailing parentheses,
 after pushing a reference to an array containing the names of the variables in
 the argument list. There is almost certainly no reason whatsoever for you to
-have to call this routine explicitly.
+have to call this routine explicitly, so it is not documented further.
 
 =head1 MODULES USED
 
-L<Filter::Simple|Filter::Simple>,
-L<Lexical::Util|Lexical::Util>,
+L<Filter::Simple|Filter::Simple>
+
+L<Lexical::Util|Lexical::Util>
+
 L<Symbol|Symbol>
 
 =head1 COPYRIGHT AND LICENSE
